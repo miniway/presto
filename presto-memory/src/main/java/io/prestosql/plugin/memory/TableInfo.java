@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static io.prestosql.plugin.memory.ColumnInfo.ROW_ID_COLUMN_INFO;
+import static io.prestosql.plugin.memory.MemoryColumnHandle.ROW_ID_COLUMN;
 import static java.util.Objects.requireNonNull;
 
 public class TableInfo
@@ -79,6 +81,9 @@ public class TableInfo
 
     public ColumnInfo getColumn(ColumnHandle handle)
     {
+        if (ROW_ID_COLUMN.equals(handle)) {
+            return ROW_ID_COLUMN_INFO;
+        }
         return columns.stream()
                 .filter(column -> column.getHandle().equals(handle))
                 .findFirst()

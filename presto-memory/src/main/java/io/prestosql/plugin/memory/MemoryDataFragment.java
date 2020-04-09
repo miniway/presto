@@ -37,7 +37,6 @@ public class MemoryDataFragment
             @JsonProperty("rows") long rows)
     {
         this.hostAddress = requireNonNull(hostAddress, "hostAddress is null");
-        checkArgument(rows >= 0, "Rows number cannot be negative");
         this.rows = rows;
     }
 

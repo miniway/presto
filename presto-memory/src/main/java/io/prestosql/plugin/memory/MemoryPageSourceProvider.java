@@ -14,6 +14,8 @@
 package io.prestosql.plugin.memory;
 
 import com.google.common.collect.ImmutableList;
+import io.prestosql.spi.HostAddress;
+import io.prestosql.spi.NodeManager;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ConnectorPageSource;
@@ -40,11 +42,13 @@ public final class MemoryPageSourceProvider
         implements ConnectorPageSourceProvider
 {
     private final MemoryPagesStore pagesStore;
+    private final HostAddress currentHostAddress;
 
     @Inject
-    public MemoryPageSourceProvider(MemoryPagesStore pagesStore)
+    public MemoryPageSourceProvider(MemoryPagesStore pagesStore, NodeManager nodeManager)
     {
         this.pagesStore = requireNonNull(pagesStore, "pagesStore is null");
+        this.currentHostAddress = requireNonNull(nodeManager, "nodeManager is null").getCurrentNode().getHostAndPort();
     }
 
     @Override
@@ -83,7 +87,7 @@ public final class MemoryPageSourceProvider
                 expectedRows,
                 memorySplit.getLimit(),
                 sampleRatio);
-        return new FixedPageSource(pages.stream()
+        return new MemoryPageSource(pagesStore, currentHostAddress, tableId, pages.stream()
                 .map(page -> applyFilter(page, domains))
                 .collect(toList()));
     }

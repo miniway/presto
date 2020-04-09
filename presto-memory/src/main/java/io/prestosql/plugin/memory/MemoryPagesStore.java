@@ -17,12 +17,14 @@ import com.google.common.collect.ImmutableList;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.block.Block;
+import io.prestosql.spi.block.BlockBuilder;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,9 +34,12 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
 
+import static io.prestosql.plugin.memory.MemoryColumnHandle.ROW_ID_COLUMN;
 import static io.prestosql.plugin.memory.MemoryErrorCode.MEMORY_LIMIT_EXCEEDED;
 import static io.prestosql.plugin.memory.MemoryErrorCode.MISSING_DATA;
+import static io.prestosql.spi.type.BigintType.BIGINT;
 import static java.lang.String.format;
 
 @ThreadSafe
@@ -111,7 +116,7 @@ public class MemoryPagesStore
                 page = page.getRegion(0, (int) (page.getPositionCount() - (totalRows - limit.getAsLong())));
                 done = true;
             }
-            partitionedPages.add(getColumns(page, columnIndexes));
+            partitionedPages.add(getColumns(page, columnIndexes, i));
         }
 
         return partitionedPages.build();
@@ -150,15 +155,55 @@ public class MemoryPagesStore
         }
     }
 
-    private static Page getColumns(Page page, List<Integer> columnIndexes)
+    private static Page getColumns(Page page, List<Integer> columnIndexes, int pageNumber)
     {
         Block[] outputBlocks = new Block[columnIndexes.size()];
+        int rowIdColumnIndex = ROW_ID_COLUMN.getColumnIndex();
 
         for (int i = 0; i < columnIndexes.size(); i++) {
-            outputBlocks[i] = page.getBlock(columnIndexes.get(i));
+            int columnIndex = columnIndexes.get(i);
+            if (columnIndex == rowIdColumnIndex) {
+                outputBlocks[i] = createRowIdBlock(pageNumber, page.getPositionCount());
+            }
+            else {
+                outputBlocks[i] = page.getBlock(columnIndex);
+            }
         }
 
         return new Page(page.getPositionCount(), outputBlocks);
+    }
+
+    private static Block createRowIdBlock(int pageNumber, int positionCount)
+    {
+        BlockBuilder builder = BIGINT.createBlockBuilder(null, positionCount);
+        IntStream.range(0, positionCount)
+                .forEach(v -> BIGINT.writeLong(builder, ((long) pageNumber) << 4 | v));
+        return builder.build();
+    }
+
+    public void deletePages(long tableId, Map<Integer, BitSet> deletePageRowIds)
+    {
+        TableData tableData = tables.get(tableId);
+
+        for (int pageNumber : deletePageRowIds.keySet()) {
+            Page page = tableData.getPages().get(pageNumber);
+            BitSet deleteRowIds = deletePageRowIds.get(pageNumber);
+            if (deleteRowIds.cardinality() == page.getPositionCount()) {
+                // delete all rows
+                tableData.set(pageNumber, page.getRegion(0, 0));
+                continue;
+            }
+
+            int[] positions = new int[page.getPositionCount() - deleteRowIds.cardinality()];
+
+            int index = 0;
+            int nextPosition = deleteRowIds.nextClearBit(0);
+            while (nextPosition < page.getPositionCount()) {
+                positions[index++] = nextPosition;
+                nextPosition = deleteRowIds.nextClearBit(nextPosition + 1);
+            }
+            tableData.set(pageNumber, page.getPositions(positions, 0, positions.length));
+        }
     }
 
     private static final class TableData
@@ -169,6 +214,15 @@ public class MemoryPagesStore
         public void add(Page page)
         {
             pages.add(page);
+            rows += page.getPositionCount();
+        }
+
+        private void set(int index, Page page)
+        {
+            Page oldPage = pages.set(index, page);
+            if (oldPage != null) {
+                rows -= oldPage.getPositionCount();
+            }
             rows += page.getPositionCount();
         }
 

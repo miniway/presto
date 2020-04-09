@@ -15,12 +15,16 @@ package io.prestosql.plugin.memory;
 
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnMetadata;
+import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.Type;
 
+import static io.prestosql.plugin.memory.MemoryColumnHandle.ROW_ID_COLUMN;
 import static java.util.Objects.requireNonNull;
 
 public class ColumnInfo
 {
+    public static final ColumnInfo ROW_ID_COLUMN_INFO = new RowIdColumnInfo();
+
     private final ColumnHandle handle;
     private final String name;
     private final Type type;
@@ -51,5 +55,20 @@ public class ColumnInfo
     public String toString()
     {
         return name + "::" + type;
+    }
+
+    private static class RowIdColumnInfo
+            extends ColumnInfo
+    {
+        public RowIdColumnInfo()
+        {
+            super(ROW_ID_COLUMN, "$rowid", BigintType.BIGINT);
+        }
+
+        @Override
+        public ColumnMetadata getMetadata()
+        {
+            return new ColumnMetadata(getName(), BigintType.BIGINT, null, true);
+        }
     }
 }

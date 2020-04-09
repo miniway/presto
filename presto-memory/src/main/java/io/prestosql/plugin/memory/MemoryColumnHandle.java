@@ -22,6 +22,9 @@ import java.util.Objects;
 public final class MemoryColumnHandle
         implements ColumnHandle
 {
+    private static final int ROW_ID_COLUMN_ID = -1;
+    public static final MemoryColumnHandle ROW_ID_COLUMN = new MemoryColumnHandle(ROW_ID_COLUMN_ID);
+
     private final int columnIndex;
 
     @JsonCreator

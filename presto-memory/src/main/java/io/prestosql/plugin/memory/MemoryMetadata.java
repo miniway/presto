@@ -60,6 +60,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.prestosql.plugin.memory.MemoryColumnHandle.ROW_ID_COLUMN;
 import static io.prestosql.spi.StandardErrorCode.ALREADY_EXISTS;
 import static io.prestosql.spi.StandardErrorCode.NOT_FOUND;
 import static io.prestosql.spi.StandardErrorCode.SCHEMA_NOT_EMPTY;
@@ -403,5 +404,25 @@ public class MemoryMetadata
         }
 
         return Optional.of(new MemoryTableHandle(table.getId(), table.getLimit(), OptionalDouble.of(table.getSampleRatio().orElse(1) * sampleRatio)));
+    }
+
+    @Override
+    public ColumnHandle getUpdateRowIdColumnHandle(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        return ROW_ID_COLUMN;
+    }
+
+    @Override
+    public ConnectorTableHandle beginDelete(ConnectorSession session, ConnectorTableHandle handle)
+    {
+        return handle;
+    }
+
+    @Override
+    public void finishDelete(ConnectorSession session, ConnectorTableHandle handle, Collection<Slice> fragments)
+    {
+        MemoryTableHandle table = (MemoryTableHandle) handle;
+
+        updateRowsOnHosts(table.getId(), fragments);
     }
 }
